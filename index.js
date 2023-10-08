@@ -3,23 +3,10 @@ const axios = require("axios");
 const _ = require("lodash");
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = 3000;
 
-app.use(express.json());
-
-// Define your error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: "Internal server error" });
-});
-
-app.get("/", (req, res) => {
-  res.send("Welcome to the Blog Analytics and Search Tool!");
-});
-
-app.get("/api/blog-stats", async (req, res, next) => {
+app.get("/api/blog-stats", async (req, res) => {
   try {
-    // Make the API request using Axios
     const response = await axios.get(
       "https://intent-kit-16.hasura.app/api/rest/blogs",
       {
@@ -32,43 +19,49 @@ app.get("/api/blog-stats", async (req, res, next) => {
 
     const blogs = response.data;
 
-    // Perform data analysis using Lodash
-    const totalBlogs = blogs.length;
-    const longestTitleBlog = _.maxBy(blogs, (blog) => blog.title.length);
-    const privacyTitleBlogs = _.filter(blogs, (blog) =>
-      blog.title.toLowerCase().includes("privacy")
+    const totalBlogs = _.size(blogs);
+    const longestBlog = _.maxBy(blogs, "title.length");
+    const blogsWithPrivacy = _.filter(blogs, (blog) =>
+      _.includes(_.toLower(blog.title), "privacy")
     );
-    const uniqueTitles = _.uniqBy(blogs, "title");
+    const uniqueBlogTitles = _.uniqBy(blogs, "title");
 
-    // Respond with the JSON object containing statistics
     res.json({
       totalBlogs,
-      longestBlogTitle: longestTitleBlog.title,
-      privacyTitleCount: privacyTitleBlogs.length,
-      uniqueBlogTitles: uniqueTitles.map((blog) => blog.title),
+      longestBlog: longestBlog ? longestBlog.title : null,
+      blogsWithPrivacy: blogsWithPrivacy.length,
+      uniqueBlogTitles: uniqueBlogTitles.map((blog) => blog.title),
     });
   } catch (error) {
-    // Handle errors, e.g., API request failed
-    next(error);
+    console.error("Error fetching or analyzing blog data:", error.message);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-// Middleware for blog search
-app.get("/api/blog-search", (req, res, next) => {
-  const query = req.query.query.toLowerCase();
+app.get("/api/blog-search", (req, res) => {
+  const query = req.query.query;
 
   if (!query) {
-    return res
-      .status(400)
-      .json({ error: 'Query parameter "query" is required' });
+    return res.status(400).json({ error: "Query parameter is required" });
   }
 
-  // Perform a search in your blog data
-  const matchedBlogs = blogs.filter((blog) =>
-    blog.title.toLowerCase().includes(query)
-  );
+  const filteredBlogs = blogs.filter((blog) => {
+    if (blog && blog.title) {
+      return _.toLower(blog.title).includes(_.toLower(query));
+    }
+    return false;
+  });
 
-  res.json({ matchedBlogs });
+  res.json(filteredBlogs);
+});
+
+app.use((err, req, res, next) => {
+  console.error("Error:", err.message);
+  res.status(500).json({ error: "Internal Server Error" });
+});
+
+app.get("/", (req, res) => {
+  res.send("Welcome to the Blog Analytics and Search Tool!");
 });
 
 app.listen(port, () => {
